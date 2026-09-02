@@ -1,0 +1,3 @@
+# No pins: nothing here can be matched against an advisory.
+flask>=2.0
+requests

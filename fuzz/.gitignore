@@ -1,0 +1,5 @@
+# Fuzzer-generated churn. Regression inputs live in fuzz/seeds/ and are committed.
+corpus/
+artifacts/
+target/
+coverage/

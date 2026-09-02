@@ -1,0 +1,79 @@
+name: nightly
+
+on:
+  schedule:
+    - cron: "0 4 * * *"
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # The failure this catches is silent under-reporting: a package manager ships a
+  # new lockfile format, our parser stops understanding it, and n3tra quietly
+  # reports fewer packages. Without this, that surfaces as a user filing a
+  # false-negative bug in eighteen months. With it, CI says so within a day.
+  format-drift:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: install latest package managers
+        run: |
+          npm install -g npm@latest pnpm@latest yarn@latest
+          pipx install uv || pip install --user uv
+          pipx install poetry || pip install --user poetry
+          echo "--- versions under test ---"
+          npm --version; pnpm --version; yarn --version
+          uv --version; poetry --version
+
+      - name: generate lockfiles with the CURRENT releases
+        run: ./scripts/format-drift.sh
+
+      - name: n3tra must parse every freshly generated lockfile
+        run: cargo test -p n3t-parse --test format_drift
+
+  # Long fuzz sessions. The PR job runs 60s per target to catch obvious
+  # regressions; real bugs surfaced here only after millions of executions.
+  fuzz:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [purl, lockfiles, advisory]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+      - run: cargo install cargo-fuzz --locked
+      - name: fuzz ${{ matrix.target }} for 30 minutes
+        run: |
+          cargo +nightly fuzz run ${{ matrix.target }} fuzz/seeds/${{ matrix.target }} \
+            -- -max_total_time=1800
+      - name: upload crash artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-crashes-${{ matrix.target }}
+          path: fuzz/artifacts/
+
+  # Advisory data moves; the differential is against a live osv-scanner and a
+  # live OSV, so it belongs nightly rather than on every PR.
+  differential:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: ./scripts/fetch-corpus.sh
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: install osv-scanner (dev-only harness, never a runtime dep — INV-12)
+        run: go install github.com/google/osv-scanner/v2/cmd/osv-scanner@latest
+      - name: differential vs osv-scanner
+        run: |
+          ./scripts/differential.sh \
+            testbed/python-vulnerable testbed/npm-vulnerable \
+            tests/corpus/react tests/corpus/babel tests/corpus/npm-cli \
+            tests/corpus/axios tests/corpus/vue-core tests/corpus/poetry
+        # Deltas are expected and documented in tests/DELTAS.md; the job reports
+        # them rather than failing, because upstream advisory data changes daily
+        # and a red nightly nobody can fix gets ignored.
+        continue-on-error: true

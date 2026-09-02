@@ -1,0 +1,33 @@
+[package]
+name = "n3t-cli"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "n3tra CLI — the unprivileged, user-facing binary (INV-1)."
+
+[[bin]]
+name = "n3t"
+path = "src/main.rs"
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+panic = "deny"
+unwrap_used = "deny"
+expect_used = "deny"
+indexing_slicing = "deny"
+
+[dependencies]
+n3t-core = { path = "../n3t-core" }
+n3t-parse = { path = "../n3t-parse" }
+n3t-advisory = { path = "../n3t-advisory" }
+serde_json = { workspace = true }
+# `help` and `usage` are dropped: they pull in `strsim`/`terminal_size` for
+# suggestion matching that a five-command CLI does not need. Dependency budget.
+clap = { version = "4", default-features = false, features = ["std", "derive", "help", "error-context"] }
+
+[dev-dependencies]
+serde_json = { workspace = true }

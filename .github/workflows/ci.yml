@@ -1,0 +1,85 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: -D warnings
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Toolchain comes from rust-toolchain.toml (INV-7: pinned, never floating).
+      - run: cargo fmt --all -- --check
+      - run: cargo clippy --all-targets --all-features
+      # The corpus tests skip cleanly when tests/corpus is absent, so this job
+      # stays green without network. The `corpus` job below is the real check.
+      - run: cargo test --workspace
+
+  # Stage 0 hard gate. Runs from day one: a dependency budget is only
+  # enforceable before it has been exceeded.
+  dependency-budget:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: ./scripts/dep-budget.sh
+
+  # Real-world lockfiles, pinned by commit SHA. These have found two parser bugs
+  # that the hand-written fixtures did not (see crates/n3t-parse/tests/corpus.rs).
+  corpus:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: ./scripts/fetch-corpus.sh
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - run: cargo test -p n3t-parse --test corpus
+
+  # Lockfiles are attacker-influenced input (threat model §2), so the parsers are
+  # a real attack surface. Short run on PRs; the nightly workflow runs long sessions.
+  fuzz-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+      - run: cargo install cargo-fuzz --locked
+      - name: fuzz each target briefly
+        run: |
+          for target in purl lockfiles advisory; do
+            cargo +nightly fuzz run "$target" fuzz/seeds/"$target" \
+              -- -max_total_time=60 -runs=2000000 || exit 1
+          done
+
+  # INV-12: the release binary must work with no other security tooling present.
+  standalone:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: ./scripts/standalone-test.sh
+
+  # INV-7: the build must not vary with time, path, or build order.
+  determinism:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: ./scripts/reproducible.sh
+
+  # INV-3: the set of loaded eBPF programs must match docs/HOOKS.md exactly.
+  # No-op until Stage 2 adds n3t-observe; wired now so it cannot be forgotten
+  # at the moment it starts to matter.
+  hook-allowlist:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: verify eBPF attach points against allowlist
+        run: |
+          if [ -d ebpf ]; then
+            cargo test -p n3t-observe --test hook_allowlist
+          else
+            echo "no ebpf/ yet (pre-Stage 2); allowlist test not applicable"
+          fi

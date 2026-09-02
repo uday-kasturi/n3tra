@@ -1,0 +1,27 @@
+[package]
+name = "n3t-advisory"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "n3tra advisory plane: OSV client, on-disk cache, CVSS scoring, version cooldown."
+
+[lints.rust]
+unsafe_code = "forbid"
+missing_docs = "warn"
+
+[lints.clippy]
+panic = "deny"
+unwrap_used = "deny"
+expect_used = "deny"
+indexing_slicing = "deny"
+
+[dependencies]
+n3t-core = { path = "../n3t-core" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+# Chosen over reqwest deliberately: blocking-only, no async runtime, and roughly
+# a third of the transitive tree. The dependency budget is a hard CI gate.
+ureq = { version = "3", default-features = false, features = ["rustls", "json"] }

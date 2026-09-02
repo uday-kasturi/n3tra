@@ -1,0 +1,5 @@
+[toolchain]
+# INV-7: the toolchain is pinned. Bumping this is a deliberate, reviewed change
+# because it invalidates every reproducibility claim made against the old pin.
+channel = "1.90.0"
+components = ["rustfmt", "clippy"]

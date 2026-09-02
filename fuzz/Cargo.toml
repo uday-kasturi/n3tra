@@ -1,0 +1,36 @@
+[package]
+name = "n3t-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+n3t-core = { path = "../crates/n3t-core" }
+n3t-parse = { path = "../crates/n3t-parse" }
+n3t-advisory = { path = "../crates/n3t-advisory" }
+serde_json = "1"
+
+[[bin]]
+name = "purl"
+path = "fuzz_targets/purl.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "lockfiles"
+path = "fuzz_targets/lockfiles.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "advisory"
+path = "fuzz_targets/advisory.rs"
+test = false
+doc = false
+bench = false

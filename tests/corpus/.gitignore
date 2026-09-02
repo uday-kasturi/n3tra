@@ -1,0 +1,4 @@
+# Corpus files are fetched, not committed — they are large and mirror upstream.
+# CORPUS.lock pins them by commit SHA and IS committed, so a fetch is reproducible.
+*/
+!CORPUS.lock
