@@ -48,9 +48,12 @@ jobs:
       - uses: taiki-e/install-action@v2
         with:
           tool: cargo-fuzz
+      # gnu triple: the prebuilt cargo-fuzz is musl and would otherwise target
+      # musl, whose static libc is incompatible with the address sanitizer.
       - name: fuzz ${{ matrix.target }} for 30 minutes
         run: |
-          cargo +nightly fuzz run ${{ matrix.target }} fuzz/seeds/${{ matrix.target }} \
+          cargo +nightly fuzz run --target x86_64-unknown-linux-gnu \
+            ${{ matrix.target }} fuzz/seeds/${{ matrix.target }} \
             -- -max_total_time=1800
       - name: upload crash artifacts
         if: failure()
