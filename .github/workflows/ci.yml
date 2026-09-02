@@ -47,7 +47,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@nightly
-      - run: cargo install cargo-fuzz --locked
+      # Prebuilt binary. Compiling cargo-fuzz from source against a floating
+      # nightly breaks whenever a nightly regresses one of its dependencies.
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-fuzz
       - name: fuzz each target briefly
         run: |
           for target in purl lockfiles advisory; do

@@ -44,7 +44,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@nightly
-      - run: cargo install cargo-fuzz --locked
+      # Prebuilt binary; see ci.yml fuzz-smoke for why we avoid compiling it.
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-fuzz
       - name: fuzz ${{ matrix.target }} for 30 minutes
         run: |
           cargo +nightly fuzz run ${{ matrix.target }} fuzz/seeds/${{ matrix.target }} \

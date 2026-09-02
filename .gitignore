@@ -15,3 +15,6 @@
 # Node / OS
 node_modules/
 **/.DS_Store
+
+# Local Claude Code settings
+.claude/
