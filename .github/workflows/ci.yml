@@ -46,9 +46,8 @@ jobs:
           echo "sha256: $(sha256sum "$f")"
           echo "bytes:  $(wc -c < "$f")"
           python3 -c "import json;d=json.load(open('$f'));pk=d.get('packages',{});print('lockfileVersion',d.get('lockfileVersion'),'| packages',len(pk),'| has_dependencies',('dependencies' in d));print('v3-pushable',sum(1 for k,n in pk.items() if k and 'node_modules/' in k and isinstance(n,dict) and n.get('version')))"
-          echo "--- binary scan (fallback only) ---"
-          cargo run -q -p n3t-cli -- scan tests/corpus/npm-cli --no-native --format json \
-            | python3 -c "import json,sys;print('scan packages_discovered',json.load(sys.stdin)['packages_discovered'])"
+          echo "--- staged counts (raw parse vs scan) ---"
+          cargo run -q -p n3t-parse --example diag_npmcli 2>&1 | grep DIAG
       - run: cargo test -p n3t-parse --test corpus
 
   # Lockfiles are attacker-influenced input (threat model §2), so the parsers are
