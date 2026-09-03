@@ -25,15 +25,26 @@ impl Ecosystem for Apt {
     }
 
     fn detect(&self, root: &Path) -> bool {
-        // Either scanning a live Debian-family system, or a rootfs laid out on
-        // disk (an extracted image, a chroot).
-        Path::new(DPKG_STATUS).exists() || status_path(root).exists()
+        // A rootfs laid out on disk (an extracted image, a chroot) that carries
+        // its own dpkg database relative to the scan root.
+        if status_path(root).exists() {
+            return true;
+        }
+        // A live Debian-family system, but ONLY when the scan target is the
+        // system root itself. Scanning a project subdirectory must never pull in
+        // the host's OS packages: `n3t scan ./my-app` on an Ubuntu box was
+        // inventorying all ~1200 host packages from the absolute
+        // `/var/lib/dpkg/status`, inflating and destabilizing the result.
+        is_system_root(root) && Path::new(DPKG_STATUS).exists()
     }
 
     fn native(&self, root: &Path) -> Option<Result<Inventory, ParseError>> {
         // dpkg-query reads the live system database, so it is only meaningful
-        // when the scan root is the live system.
-        if !Path::new(DPKG_STATUS).exists() || !exec::available("dpkg-query") {
+        // when the scan root is the live system itself, never a project dir.
+        if !is_system_root(root)
+            || !Path::new(DPKG_STATUS).exists()
+            || !exec::available("dpkg-query")
+        {
             return None;
         }
         let raw = exec::run(
@@ -46,23 +57,32 @@ impl Ecosystem for Apt {
     }
 
     fn fallback(&self, root: &Path) -> Result<Inventory, ParseError> {
-        let path = status_path(root);
-        let path = if path.exists() {
-            path
-        } else {
+        // Prefer a rootfs-relative database; only consult the host's absolute one
+        // when the scan target is the system root (see `detect`).
+        let rootfs = status_path(root);
+        let path = if rootfs.exists() {
+            rootfs
+        } else if is_system_root(root) && Path::new(DPKG_STATUS).exists() {
             PathBuf::from(DPKG_STATUS)
+        } else {
+            // Not a Debian system or rootfs; this ecosystem simply does not apply
+            // here. `detect` gates this, so reaching it means nothing to report.
+            return Ok(Inventory::default());
         };
-        if !path.exists() {
-            let mut inv = Inventory::default();
-            inv.gap("deb", "no dpkg status database found");
-            return Ok(inv);
-        }
         parse_dpkg_status(&path, distro(root))
     }
 }
 
 fn status_path(root: &Path) -> PathBuf {
     root.join("var/lib/dpkg/status")
+}
+
+/// Whether `root` is the filesystem root (`/`), i.e. a live-system scan rather
+/// than a project directory. The canonical root is the only path with no parent.
+fn is_system_root(root: &Path) -> bool {
+    root.canonicalize()
+        .map(|p| p.parent().is_none())
+        .unwrap_or(false)
 }
 
 /// Read the distro ID from `os-release`, so advisories match the right feed.
@@ -285,5 +305,28 @@ Version: 2.0.0
         let inv = parse_dpkg_status(&path, None).expect("parse");
         assert!(inv.packages.is_empty());
         assert_eq!(inv.gaps.len(), 1);
+    }
+
+    // Regression: `detect` used to return true for any directory on a Debian
+    // host because it checked the absolute `/var/lib/dpkg/status`. Scanning a
+    // project directory then merged the host's ~1200 OS packages into the
+    // result (Linux-only, and drifting as the host changed). A plain project
+    // directory, with no rootfs dpkg database of its own, must yield nothing
+    // from the deb ecosystem on every platform.
+    #[test]
+    fn project_dir_does_not_inventory_host_os_packages() {
+        let dir = std::env::temp_dir().join(format!("n3t-apt-scope-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("tmpdir");
+        assert!(
+            !Apt.detect(&dir),
+            "apt claimed a plain project directory (would pull in host OS packages)"
+        );
+        let inv = Apt.fallback(&dir).expect("fallback");
+        assert!(
+            inv.packages.is_empty(),
+            "host deb packages leaked into a project scan: {:?}",
+            names(&inv)
+        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
