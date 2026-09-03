@@ -122,10 +122,27 @@ fn skip_if_absent(dir: &Path) -> bool {
     false
 }
 
+/// Whether the corpus has not been fetched, so a whole-corpus test should skip.
+///
+/// The `tests/corpus` directory itself is committed (it holds `CORPUS.lock`), so
+/// its mere existence is not evidence the corpus was fetched. Require at least
+/// one expected entry to be present. This keeps `cargo test --workspace` green
+/// on jobs that do not run `fetch-corpus.sh` (e.g. the offline `check` job).
+fn corpus_not_fetched(root: &Path) -> bool {
+    if EXPECTED.iter().any(|e| root.join(e.name).exists()) {
+        return false;
+    }
+    eprintln!(
+        "skipping: no corpus entries under {} — run ./scripts/fetch-corpus.sh",
+        root.display()
+    );
+    true
+}
+
 #[test]
 fn corpus_package_counts_are_stable() {
     let root = corpus_root();
-    if skip_if_absent(&root) {
+    if corpus_not_fetched(&root) {
         return;
     }
 
@@ -170,7 +187,7 @@ fn corpus_package_counts_are_stable() {
 #[test]
 fn no_corpus_lockfile_parses_to_nothing() {
     let root = corpus_root();
-    if skip_if_absent(&root) {
+    if corpus_not_fetched(&root) {
         return;
     }
 
@@ -200,7 +217,7 @@ fn no_corpus_lockfile_parses_to_nothing() {
 #[test]
 fn corpus_packages_are_fully_versioned() {
     let root = corpus_root();
-    if skip_if_absent(&root) {
+    if corpus_not_fetched(&root) {
         return;
     }
 
